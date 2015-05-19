@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -68,48 +69,53 @@ public class ProxyLB {
 	class Accepter_clients implements Runnable {
 
 		private ServerSocket socketserver;
-		private Socket socket;
+		private Socket socketClient;
     
 		public Accepter_clients(ServerSocket s) {
 			socketserver = s;
 		}
  
 		public void run() {
-
+			
 			try {
 				while (true) {
-					socket = socketserver.accept();
-					
-					 InputStream from_client = socket.getInputStream();
-				   OutputStream to_client = socket.getOutputStream();
-				   
-
+					socketClient = socketserver.accept();
+					System.out.println("Client connected to proxy");
+					InputStream clientInp = socketClient.getInputStream();
+				    OutputStream clientOut = socketClient.getOutputStream();
+				    
 					try {
-						 byte[] buffer = new byte[2048];
-				          int bytes_read;
-						Socket socketS = new Socket(  (InetAddress.getByName(workers.get("0").get("ip"))), 8080);
-						InputStream from_server = socketS.getInputStream();
-					     OutputStream to_server = socketS.getOutputStream();
+						byte[] bufferIn = new byte[2048];
+						byte[] bufferOut = new byte[2048];
+				        int bytes_in;
+				        int bytes_out;
+						Socket socketServeur = new Socket(  (InetAddress.getByName(workers.get("0").get("ip"))), 8080);
+						OutputStream serveurOut = socketServeur.getOutputStream();
+				        InputStream serveurInp = socketServeur.getInputStream();
 					     
-					 	while((bytes_read = from_client.read(buffer)) != -1) {
-				              to_server.write(buffer, 0, bytes_read);
-				              to_server.flush();
+				        while((bytes_in = clientInp.read(bufferIn)) != -1){
+				            serveurOut.write(bufferIn, 0, bytes_in);
+				            if((new String(Arrays.copyOf(bufferIn, bytes_in))).endsWith("\r\n\r\n")){
+				                break;
 				            }
-					 	
-					 	byte[] bufferT = new byte[2048];
-				          int bytes_readT;
-				          
-				            while((bytes_readT = from_server.read(bufferT)) != -1) {
-				              to_client.write(bufferT, 0, bytes_readT);
-				              to_client.flush();
-				            }
+				        }
+				        while((bytes_out = serveurInp.read(bufferOut)) != -1){
+				            clientOut.write(bufferOut, 0, bytes_out);
+				        }
+				        clientOut.close();
+				        clientInp.close();
+				        serveurInp.close();
+				        serveurOut.close();
+				        socketServeur.close();
+				        socketClient.close();
+				       
 					} catch (IOException e) {
 						
 						e.printStackTrace();
 					}
 				
 				
-					socket.close();
+					socketClient.close();
 				}
 
 			} catch (IOException e) {
