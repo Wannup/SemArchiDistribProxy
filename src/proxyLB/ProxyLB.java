@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -30,7 +31,10 @@ public class ProxyLB {
 		ServerSocket socket;
 		try {
 			socket = new ServerSocket(Port);
-			handle(socket);
+
+			Thread t = new Thread(new Accepter_clients(socket));
+			t.start();
+			// handle(socket);
 
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -62,56 +66,74 @@ public class ProxyLB {
 		System.out.println(workers);
 	}
 
-	private void handle(ServerSocket socketserver) {
-		
-		try {
-			Socket socketClientProxy = socketserver.accept();
-			final InputStream inputClientProxy = socketClientProxy.getInputStream();
-			OutputStream outputClientProxy = socketClientProxy.getOutputStream();
-			
-			Socket socketProxyServeur = new Socket((InetAddress.getByName(workers.get(balancing).get("ip"))), Integer.parseInt(workers.get(balancing).get("port")));
-			System.out.println("connect on serveur ip:"+workers.get(balancing).get("ip")+ " port: "+ workers.get(balancing).get("port"));
-			InputStream inputProxyServeur = socketProxyServeur.getInputStream();
-			final OutputStream outputProxyServeur = socketProxyServeur.getOutputStream();
-			
-			Thread t = new Thread() {
-				public void run() {
-			byte[] buffer = new byte[2048];
-			int bytes_read;
-			try {
-				while ((bytes_read = inputClientProxy.read(buffer)) != 1) {
-					outputProxyServeur.write(buffer, 0, bytes_read);
-					outputProxyServeur.flush();
-					System.out.println("écriture vers le serveur");
-				}
-			//outputProxyServeur.close();
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			
-			}};
-			t.start();
-			
-			byte[] bufferT = new byte[2048];
-			int bytes_readT;
-			
-			while ((bytes_readT = inputProxyServeur.read(bufferT)) != -1) {
-				outputClientProxy.write(bufferT, 0, bytes_readT);
-				outputClientProxy.flush();
-				System.out.println("écriture vers le client");
-			}
-			//outputClientProxy.close();
-			
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
+	class Accepter_clients implements Runnable {
+
+		private ServerSocket socketserver;
+		private Socket socketClient;
+
+		public Accepter_clients(ServerSocket s) {
+			socketserver = s;
 		}
 
-	/*	if(balancing.equals("0"))
-			balancing = "1";
-		else
-			balancing = "0";*/
-	}
+		public void run() {
 
+			try {
+
+				while (true) {
+					socketClient = socketserver.accept();
+					System.out.println("Client connected to proxy");
+					InputStream clientInp = socketClient.getInputStream();
+					OutputStream clientOut = socketClient.getOutputStream();
+
+					try {
+						byte[] bufferIn = new byte[2048];
+						byte[] bufferOut = new byte[2048];
+						int bytes_in;
+						int bytes_out;
+						Socket socketServeur = new Socket(
+								(InetAddress.getByName(workers.get(balancing).get(
+										"ip"))), Integer.parseInt(workers.get(balancing).get(
+										"port")));
+						
+						System.out.println("connect to server ip:"+workers.get(balancing).get("ip")+" port:"+workers.get(balancing).get("port"));
+						
+						OutputStream serveurOut = socketServeur
+								.getOutputStream();
+						InputStream serveurInp = socketServeur.getInputStream();
+
+						while ((bytes_in = clientInp.read(bufferIn)) != -1) {
+							serveurOut.write(bufferIn, 0, bytes_in);
+							if ((new String(Arrays.copyOf(bufferIn, bytes_in)))
+									.endsWith("\r\n\r\n")) {
+								break;
+							}
+						}
+						while ((bytes_out = serveurInp.read(bufferOut)) != -1) {
+							clientOut.write(bufferOut, 0, bytes_out);
+						}
+						clientOut.close();
+						clientInp.close();
+						serveurInp.close();
+						serveurOut.close();
+						socketServeur.close();
+						socketClient.close();
+
+					} catch (IOException e) {
+
+						e.printStackTrace();
+					}
+					
+					if(balancing.equals("0"))
+						balancing = "1";
+					else
+						balancing = "0";
+					
+					socketClient.close();
+				}
+				
+			} catch (IOException e) {
+				 
+			}
+		}
+	}
 }
