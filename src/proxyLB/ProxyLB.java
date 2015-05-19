@@ -12,37 +12,34 @@ import java.util.Map;
 import java.util.Set;
 
 public class ProxyLB {
-	
+
 	private Map<String, Map<String, String>> workers = new HashMap<String, Map<String, String>>();
 	private int Port;
-	
-	public ProxyLB(int port){
+	private String balancing = "0";
+
+	public ProxyLB(int port) {
 		try {
 			init(port);
 			run();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
-	
-	private void run(){
+
+	private void run() {
 		ServerSocket socket;
 		try {
 			socket = new ServerSocket(Port);
-			
-			Thread t = new Thread(new Accepter_clients(socket));
-			t.start();
+			handle(socket);
 
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 
 	}
-	
-	private void init(int port) throws IOException{
-		
+
+	private void init(int port) throws IOException {
+
 		this.Port = port;
 		Map<String, String> configFileIni = Ini.load("config.ini");
 
@@ -64,58 +61,57 @@ public class ProxyLB {
 		}
 		System.out.println(workers);
 	}
-	
-	class Accepter_clients implements Runnable {
 
-		private ServerSocket socketserver;
-		private Socket socket;
-    
-		public Accepter_clients(ServerSocket s) {
-			socketserver = s;
-		}
- 
-		public void run() {
-
+	private void handle(ServerSocket socketserver) {
+		
+		try {
+			Socket socketClientProxy = socketserver.accept();
+			final InputStream inputClientProxy = socketClientProxy.getInputStream();
+			OutputStream outputClientProxy = socketClientProxy.getOutputStream();
+			
+			Socket socketProxyServeur = new Socket((InetAddress.getByName(workers.get(balancing).get("ip"))), Integer.parseInt(workers.get(balancing).get("port")));
+			System.out.println("connect on serveur ip:"+workers.get(balancing).get("ip")+ " port: "+ workers.get(balancing).get("port"));
+			InputStream inputProxyServeur = socketProxyServeur.getInputStream();
+			final OutputStream outputProxyServeur = socketProxyServeur.getOutputStream();
+			
+			Thread t = new Thread() {
+				public void run() {
+			byte[] buffer = new byte[2048];
+			int bytes_read;
 			try {
-				while (true) {
-					socket = socketserver.accept();
-					
-					 InputStream from_client = socket.getInputStream();
-				   OutputStream to_client = socket.getOutputStream();
-				   
-
-					try {
-						 byte[] buffer = new byte[2048];
-				          int bytes_read;
-						Socket socketS = new Socket(  (InetAddress.getByName(workers.get("0").get("ip"))), 8080);
-						InputStream from_server = socketS.getInputStream();
-					     OutputStream to_server = socketS.getOutputStream();
-					     
-					 	while((bytes_read = from_client.read(buffer)) != -1) {
-				              to_server.write(buffer, 0, bytes_read);
-				              to_server.flush();
-				            }
-					 	
-					 	byte[] bufferT = new byte[2048];
-				          int bytes_readT;
-				          
-				            while((bytes_readT = from_server.read(bufferT)) != -1) {
-				              to_client.write(bufferT, 0, bytes_readT);
-				              to_client.flush();
-				            }
-					} catch (IOException e) {
-						
-						e.printStackTrace();
-					}
-				
-				
-					socket.close();
+				while ((bytes_read = inputClientProxy.read(buffer)) != 1) {
+					outputProxyServeur.write(buffer, 0, bytes_read);
+					outputProxyServeur.flush();
+					System.out.println("écriture vers le serveur");
 				}
-
+			//outputProxyServeur.close();
 			} catch (IOException e) {
+				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
+			
+			}};
+			t.start();
+			
+			byte[] bufferT = new byte[2048];
+			int bytes_readT;
+			
+			while ((bytes_readT = inputProxyServeur.read(bufferT)) != -1) {
+				outputClientProxy.write(bufferT, 0, bytes_readT);
+				outputClientProxy.flush();
+				System.out.println("écriture vers le client");
+			}
+			//outputClientProxy.close();
+			
+		} catch (IOException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
 		}
+
+	/*	if(balancing.equals("0"))
+			balancing = "1";
+		else
+			balancing = "0";*/
 	}
 
 }
